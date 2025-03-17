@@ -1,0 +1,13 @@
+{
+    "actorSpecification": 1,
+    "name": "ai-job-finder",
+    "title": "AI Job Finder",
+    "description": "An AI-powered tool that reads a CV and/or prompt to find relevant jobs on LinkedIn",
+    "version": "0.1",
+    "buildTag": "latest",
+    "meta": {
+        "templateId": "python-apify"
+    },
+    "input": "./input_schema.json",
+    "dockerfile": "./Dockerfile"
+}

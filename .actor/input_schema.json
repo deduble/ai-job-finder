@@ -1,0 +1,67 @@
+{
+    "title": "AI Job Finder",
+    "description": "An AI-powered tool that reads a CV and/or prompt to find relevant jobs on LinkedIn",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "cv": {
+            "title": "CV/Resume",
+            "type": "string",
+            "description": "Upload your CV/resume (PDF, DOCX, TXT formats supported) as Base64 encoded string",
+            "editor": "textarea",
+            "nullable": true
+        },
+        "prompt": {
+            "title": "Job Search Query",
+            "type": "string",
+            "description": "Describe the job you're looking for (e.g., 'Senior Python Developer in New York')",
+            "editor": "textarea",
+            "default": "I'm looking for remote senior software engineering roles in AI companies. I have 5 years of experience with Python and machine learning.",
+            "nullable": true
+        },
+        "llm_settings": {
+            "title": "LLM Provider Settings",
+            "type": "object",
+            "description": "Configure which LLM provider to use",
+            "editor": "json",
+            "default": {
+                "provider": "gemini",
+                "model": "gemini-1.5-pro"
+            },
+            "prefill": {
+                "provider": "gemini",
+                "model": "gemini-1.5-pro"
+            }
+        },
+        "api_keys": {
+            "title": "API Keys",
+            "type": "object",
+            "description": "API keys for LLM providers (optional - defaults to environment variables)",
+            "editor": "json",
+            "default": {},
+            "prefill": {
+                "openai": "",
+                "claude": "",
+                "gemini": ""
+            }
+        },
+        "linkedin_search_params": {
+            "title": "Additional LinkedIn Search Parameters",
+            "type": "object",
+            "description": "Override specific LinkedIn search parameters",
+            "editor": "json",
+            "nullable": true
+        },
+        "proxy": {
+            "title": "Proxy Configuration",
+            "type": "object",
+            "description": "Configure Apify proxy for LinkedIn scraping",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true,
+                "apifyProxyGroups": ["RESIDENTIAL"]
+            }
+        }
+    },
+    "required": []
+}
