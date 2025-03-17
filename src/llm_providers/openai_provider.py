@@ -2,6 +2,7 @@ import json
 import logging
 import base64
 import re
+import numpy as np
 from typing import Dict, Any, Optional, List
 
 from openai import AsyncOpenAI
@@ -82,6 +83,100 @@ class OpenAIProvider(LLMProvider):
         except Exception as e:
             logger.error(f"OpenAI text processing failed: {str(e)}")
             raise
+            
+    async def generate_job_description_from_cv(self, cv_data: str) -> str:
+        """Generate an optimized job description based on a CV"""
+        # Extract text from CV if needed
+        cv_text = cv_data
+        if cv_data.startswith("data:"):
+            # Use vision capabilities if supported
+            logger.info("Using vision model to process CV document")
+            return await self._generate_job_description_with_vision(cv_data)
+            
+        # Use text-based approach
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a job description writer tasked with creating the perfect job description for a candidate based on their CV."},
+                    {"role": "user", "content": f"""
+                    Create a detailed job description that would be a perfect match for the candidate with this CV.
+                    The job description should highlight all their skills and experience, making it an ideal fit.
+                    Focus on their technical skills, experience level, and career trajectory.
+                    
+                    CV:
+                    {cv_text}
+                    
+                    Return only the job description, no comments or explanations.
+                    """}
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"OpenAI job description generation failed: {str(e)}")
+            raise
+            
+    async def _generate_job_description_with_vision(self, cv_data: str) -> str:
+        """Generate job description using vision capabilities"""
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a job description writer tasked with creating the perfect job description for a candidate based on their CV."},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": """
+                        Create a detailed job description that would be a perfect match for the candidate with this CV.
+                        The job description should highlight all their skills and experience, making it an ideal fit.
+                        Focus on their technical skills, experience level, and career trajectory.
+                        
+                        Return only the job description, no comments or explanations.
+                        """},
+                        {"type": "image_url", "image_url": {"url": cv_data}}
+                    ]}
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"OpenAI vision job description generation failed: {str(e)}")
+            raise
+            
+    async def generate_embeddings(self, text: str) -> List[float]:
+        """Generate embeddings for the given text using OpenAI's embedding API"""
+        try:
+            response = await self.client.embeddings.create(
+                model="text-embedding-3-small",  # Using OpenAI's latest embedding model
+                input=text
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"OpenAI embedding generation failed: {str(e)}")
+            raise
+            
+    async def calculate_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """Calculate cosine similarity between two embeddings"""
+        try:
+            # Convert to numpy arrays for efficient calculation
+            vec1 = np.array(embedding1)
+            vec2 = np.array(embedding2)
+            
+            # Calculate cosine similarity
+            dot_product = np.dot(vec1, vec2)
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
+            
+            # Avoid division by zero
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+                
+            similarity = dot_product / (norm1 * norm2)
+            
+            # Scale to 0-1 range (cosine similarity is between -1 and 1)
+            # For text embeddings, we typically expect positive similarity
+            return max(0.0, similarity)
+        except Exception as e:
+            logger.error(f"Similarity calculation failed: {str(e)}")
+            # Return 0 on error
+            return 0.0
     
     async def process_prompt(self, prompt: str) -> Dict[str, Any]:
         """Process user prompt and extract job search parameters"""

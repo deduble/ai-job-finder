@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import base64
+import numpy as np
 from typing import Dict, Any, Optional, List
 
 from anthropic import AsyncAnthropic
@@ -138,6 +139,133 @@ class ClaudeProvider(LLMProvider):
         except Exception as e:
             logger.error(f"Claude prompt processing failed: {str(e)}")
             raise
+            
+    async def generate_job_description_from_cv(self, cv_data: str) -> str:
+        """Generate an optimized job description based on a CV"""
+        # Extract text from CV if needed
+        cv_text = cv_data
+        if cv_data.startswith("data:"):
+            # Use document capabilities if supported
+            logger.info("Using Claude to process CV document")
+            return await self._generate_job_description_with_document(cv_data)
+            
+        # Use text-based approach
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                system="You are a job description writer tasked with creating the perfect job description for a candidate based on their CV.",
+                messages=[
+                    {"role": "user", "content": f"""
+                    Create a detailed job description that would be a perfect match for the candidate with this CV.
+                    The job description should highlight all their skills and experience, making it an ideal fit.
+                    Focus on their technical skills, experience level, and career trajectory.
+                    
+                    CV:
+                    {cv_text}
+                    
+                    Return only the job description, no comments or explanations.
+                    """}
+                ]
+            )
+            return response.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Claude job description generation failed: {str(e)}")
+            raise
+            
+    async def _generate_job_description_with_document(self, cv_data: str) -> str:
+        """Generate job description using document capabilities"""
+        try:
+            # Extract the mime type and base64 data
+            mime_type, encoded_data = cv_data.split(';base64,', 1)
+            mime_type = mime_type.replace('data:', '')
+            
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                system="You are a job description writer tasked with creating the perfect job description for a candidate based on their CV.",
+                messages=[
+                    {"role": "user", "content": [
+                        {"type": "text", "text": """
+                        Create a detailed job description that would be a perfect match for the candidate with this CV.
+                        The job description should highlight all their skills and experience, making it an ideal fit.
+                        Focus on their technical skills, experience level, and career trajectory.
+                        
+                        Return only the job description, no comments or explanations.
+                        """},
+                        {"type": "image", "source": {
+                            "type": "base64",
+                            "media_type": mime_type,
+                            "data": encoded_data
+                        }}
+                    ]}
+                ]
+            )
+            return response.content[0].text.strip()
+        except Exception as e:
+            logger.error(f"Claude document job description generation failed: {str(e)}")
+            raise
+            
+    async def generate_embeddings(self, text: str) -> List[float]:
+        """Generate embeddings for the given text using Claude's API"""
+        try:
+            # Claude doesn't have a dedicated embeddings API, so we'll use a workaround
+            # Ask the model to create a representation as a list of numbers
+            # This is not ideal and a real implementation should use a different model or service
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                system="Generate a numerical embedding representation of the text.",
+                messages=[
+                    {"role": "user", "content": f"""
+                    Create a 384-dimensional numerical embedding for the following text. The embedding should be a 
+                    list of 384 float numbers between -1 and 1 representing the semantic meaning of the text.
+                    Return ONLY the list of numbers (as a valid JSON array) with no explanation or additional text.
+                    
+                    TEXT: {text}
+                    """}
+                ]
+            )
+            
+            content = response.content[0].text
+            # Find JSON in the content
+            json_match = re.search(r'\[.*\]', content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
+            else:
+                logger.error(f"Failed to parse embeddings from Claude response: {content}")
+                # Fallback to a random embedding (this should never happen in a real implementation)
+                return [0.0] * 384
+        except Exception as e:
+            logger.error(f"Claude embedding generation failed: {str(e)}")
+            # Return a zero embedding as a fallback
+            return [0.0] * 384
+            
+    async def calculate_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """Calculate cosine similarity between two embeddings"""
+        try:
+            # Convert to numpy arrays for efficient calculation
+            vec1 = np.array(embedding1)
+            vec2 = np.array(embedding2)
+            
+            # Calculate cosine similarity
+            dot_product = np.dot(vec1, vec2)
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
+            
+            # Avoid division by zero
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+                
+            similarity = dot_product / (norm1 * norm2)
+            
+            # Scale to 0-1 range (cosine similarity is between -1 and 1)
+            # For text embeddings, we typically expect positive similarity
+            return max(0.0, similarity)
+        except Exception as e:
+            logger.error(f"Similarity calculation failed: {str(e)}")
+            # Return 0 on error
+            return 0.0
     
     def _get_cv_prompt(self) -> str:
         """Get the prompt for CV analysis"""

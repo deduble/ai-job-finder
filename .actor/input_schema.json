@@ -6,9 +6,9 @@
     "properties": {
         "cv": {
             "title": "CV/Resume",
-            "type": "string",
+            "type": "object",
             "description": "Upload your CV/resume (PDF, DOCX, TXT formats supported) as Base64 encoded string",
-            "editor": "textarea",
+            "editor": "json",
             "nullable": true
         },
         "prompt": {

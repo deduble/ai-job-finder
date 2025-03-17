@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 class LLMProvider(ABC):
     """Base abstract class for LLM providers"""
@@ -59,3 +59,43 @@ class LLMProvider(ABC):
             True if document processing is supported, False otherwise
         """
         return False
+        
+    @abstractmethod
+    async def generate_job_description_from_cv(self, cv_data: str) -> str:
+        """
+        Generate an optimized job description based on a CV
+        
+        Args:
+            cv_data: CV content (could be base64 encoded file or text)
+            
+        Returns:
+            A job description that would be a perfect match for the candidate
+        """
+        pass
+        
+    @abstractmethod
+    async def generate_embeddings(self, text: str) -> List[float]:
+        """
+        Generate embeddings for the given text
+        
+        Args:
+            text: Text to generate embeddings for
+            
+        Returns:
+            List of floating point numbers representing the text embedding
+        """
+        pass
+        
+    @abstractmethod
+    async def calculate_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """
+        Calculate similarity score between two embeddings
+        
+        Args:
+            embedding1: First embedding vector
+            embedding2: Second embedding vector
+            
+        Returns:
+            Similarity score between 0 and 1, where 1 means perfect match
+        """
+        pass

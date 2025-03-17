@@ -12,6 +12,7 @@ from .llm_providers.factory import create_llm_provider
 from .cv_processor import process_cv
 from .prompt_processor import process_prompt
 from .parameter_handler import apply_parameter_defaults
+from .cv_matching import generate_ideal_job_description, calculate_job_match_scores
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -57,11 +58,11 @@ async def main():
             "description": f"Please provide an API key for {provider_name.upper()} to use this Actor",
             "instructions": f"Set the {provider_name.upper()}_API_KEY environment variable or provide it in the api_keys input parameter",
             "location": "N/A",
-            "companyName": "AI Job Finder",
+            "companyName": "",
             "experienceLevel": "N/A",
             "workType": "N/A",
             "contractType": "N/A",
-            "publishedAt": "N/A",
+            "publishedAt": "",
             "message": f"API key for {provider_name} is required to get real results"
         }])
         logger.info("Returned message indicating API key is needed")
@@ -115,6 +116,20 @@ async def main():
     logger.info("Calling LinkedIn scraper with parameters")
     try:
         jobs = await call_linkedin_scraper(parameters)
+        
+        # If we have a CV, generate a matching job description and calculate match scores
+        ideal_job_description = None
+        if cv_data:
+            logger.info("Generating ideal job description from CV")
+            ideal_job_description = await generate_ideal_job_description(cv_data, llm_provider)
+            
+            if ideal_job_description:
+                logger.info("Calculating job match scores")
+                jobs = await calculate_job_match_scores(ideal_job_description, jobs, llm_provider)
+                
+                # Add the ideal job description to the first job for reference
+                if len(jobs) > 0:
+                    jobs[0]["ideal_job_description"] = ideal_job_description
         
         # Save output
         await Actor.push_data(jobs)

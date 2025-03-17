@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import base64
+import numpy as np
 from typing import Dict, Any, Optional, List
 
 import google.generativeai as genai
@@ -18,6 +19,7 @@ class GeminiProvider(LLMProvider):
         genai.configure(api_key=api_key)
         self.model_name = model or "gemini-1.5-pro"
         self.model = genai.GenerativeModel(self.model_name)
+        self.embedding_model = genai.GenerativeModel("embedding-001")
 
     def supports_document_processing(self) -> bool:
         """Check if this provider/model supports direct document processing"""
@@ -164,6 +166,131 @@ class GeminiProvider(LLMProvider):
         except Exception as e:
             logger.error(f"Gemini prompt processing failed: {str(e)}")
             raise
+            
+    async def generate_job_description_from_cv(self, cv_data: str) -> str:
+        """Generate an optimized job description based on a CV"""
+        # Extract text from CV if needed
+        cv_text = cv_data
+        if cv_data.startswith("data:"):
+            # Use vision capabilities if supported
+            logger.info("Using Gemini to process CV document")
+            return await self._generate_job_description_with_vision(cv_data)
+            
+        # Use text-based approach
+        try:
+            response = self.model.generate_content(
+                f"""
+                You are a job description writer tasked with creating the perfect job description for a candidate based on their CV.
+                Create a detailed job description that would be a perfect match for the candidate with this CV.
+                The job description should highlight all their skills and experience, making it an ideal fit.
+                Focus on their technical skills, experience level, and career trajectory.
+                
+                CV:
+                {cv_text}
+                
+                Return only the job description, no comments or explanations.
+                """,
+                generation_config={
+                    "temperature": 0.2
+                }
+            )
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Gemini job description generation failed: {str(e)}")
+            raise
+            
+    async def _generate_job_description_with_vision(self, cv_data: str) -> str:
+        """Generate job description using vision capabilities"""
+        try:
+            # Extract the mime type and base64 data
+            mime_type, encoded_data = cv_data.split(';base64,', 1)
+            mime_type = mime_type.replace('data:', '')
+            
+            # Create a content parts list with prompt and image
+            parts = [
+                """
+                You are a job description writer tasked with creating the perfect job description for a candidate based on their CV.
+                Create a detailed job description that would be a perfect match for the candidate with this CV.
+                The job description should highlight all their skills and experience, making it an ideal fit.
+                Focus on their technical skills, experience level, and career trajectory.
+                
+                Return only the job description, no comments or explanations.
+                """,
+                {"mime_type": mime_type, "data": base64.b64decode(encoded_data)}
+            ]
+            
+            response = self.model.generate_content(
+                parts,
+                generation_config={
+                    "temperature": 0.2
+                }
+            )
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Gemini vision job description generation failed: {str(e)}")
+            raise
+            
+    async def generate_embeddings(self, text: str) -> List[float]:
+        """Generate embeddings for the given text using Google's embedding model"""
+        try:
+            result = self.embedding_model.generate_content(text)
+            if hasattr(result, 'embedding'):
+                return result.embedding
+            else:
+                logger.warning("No embedding found in Gemini response, using alternative approach")
+                # Alternative approach - ask the model to generate an embedding
+                response = self.model.generate_content(
+                    f"""
+                    Task: Create a 768-dimensional numerical embedding for this text: "{text[:1000]}..."
+                    
+                    Return ONLY a JSON array of 768 floating point numbers between -1 and 1.
+                    """,
+                    generation_config={
+                        "temperature": 0.0
+                    }
+                )
+                content = response.text
+                
+                # Try to extract a JSON array
+                pattern = r'\[\s*-?\d+(\.\d+)?(,\s*-?\d+(\.\d+)?)*\s*\]'
+                match = re.search(pattern, content)
+                if match:
+                    embedding = json.loads(match.group(0))
+                    return embedding
+                
+                # If still can't extract, use a fallback
+                logger.error("Failed to extract embedding from Gemini, using fallback")
+                return [0.0] * 768
+        except Exception as e:
+            logger.error(f"Gemini embedding generation failed: {str(e)}")
+            # Return a zero embedding as a fallback
+            return [0.0] * 768
+            
+    async def calculate_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """Calculate cosine similarity between two embeddings"""
+        try:
+            # Convert to numpy arrays for efficient calculation
+            vec1 = np.array(embedding1)
+            vec2 = np.array(embedding2)
+            
+            # Calculate cosine similarity
+            dot_product = np.dot(vec1, vec2)
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
+            
+            # Avoid division by zero
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+                
+            similarity = dot_product / (norm1 * norm2)
+            
+            # Scale to 0-1 range (cosine similarity is between -1 and 1)
+            # For text embeddings, we typically expect positive similarity
+            return max(0.0, similarity)
+        except Exception as e:
+            logger.error(f"Similarity calculation failed: {str(e)}")
+            # Return 0 on error
+            return 0.0
 
     def _get_cv_prompt(self) -> str:
         """Get the prompt for CV analysis"""
