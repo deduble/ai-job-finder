@@ -5,7 +5,7 @@
     "model": "gemini-1.5-pro"
   },
   "api_keys": {
-    "gemini": "AIzaSyAuH-WqCxwsBaMtLsJ5gQC7ciHdKcR8VaQ"
+    "gemini": ""
   },
   "proxy": {
     "useApifyProxy": true,
